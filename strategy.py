@@ -85,15 +85,35 @@ if __name__ == '__main__':
     cerebro.broker.setcommission(commission=0.001)
     # Descargar el csv 
 
-        #Hay que ejecutar el cleaner para formatear el archivo cuando recien se descarga
-        #esto deberiamos solucionarlo pero no se como.
-        
-    symbols = ['AAPL', 'BRK', 'NVDA']
-    data_files = [
-        'samples/orcl_cleaned_AAPL.csv',
-        'samples/orcl_cleaned_BRK.csv',
-        'samples/orcl_cleaned_NVDA.csv'
-    ]
+    datos = 3
+
+    # Set 1: APPLE, Berkshire Hathaway Inc, NVIDIA
+    if (datos == 1):
+        symbols = ['AAPL', 'BRK', 'NVDA']
+        data_files = [
+            'samples/orcl_cleaned_AAPL.csv',
+            'samples/orcl_cleaned_BRK.csv',
+            'samples/orcl_cleaned_NVDA.csv'
+        ]
+    # Set 2: AMD, DISNEY, Walmart
+    elif(datos == 2):
+        symbols = ['AMD', 'DIS', 'WMT']
+        data_files = [        
+            'samples/orcl_cleaned_AMD.csv',
+            'samples/orcl_cleaned_DIS.csv',
+            'samples/orcl_cleaned_WMT.csv'
+        ]
+
+    # Set 3: AMD, APPLE, NVIDIA
+    else:
+        symbols = ['AMD', 'AAPL', 'NVDA']
+        data_files = [        
+            'samples/orcl_cleaned_AMD.csv',
+            'samples/orcl_cleaned_AAPL.csv',
+            'samples/orcl_cleaned_NVDA.csv'
+        ]
+
+
     #file_path = 'samples/orcl_cleaned_NVDA.csv'
     # Añadir los datos al cerebro
     for i, file_path in enumerate(data_files):

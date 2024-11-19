@@ -1,6 +1,6 @@
 import csv
 from datetime import datetime
-accion = "BRK"
+accion = "WMT"
 input_file = f'samples/orcl_invalid_{accion}.csv'
 output_file = f'samples/orcl_cleaned_{accion}.csv'
 
