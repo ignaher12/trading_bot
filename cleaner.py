@@ -1,8 +1,8 @@
 import csv
 from datetime import datetime
-
-input_file = 'samples/orcl_invalid-12-31.csv'
-output_file = 'samples/orcl_cleaned.csv'
+accion = "BRK"
+input_file = f'samples/orcl_invalid_{accion}.csv'
+output_file = f'samples/orcl_cleaned_{accion}.csv'
 
 # Abrir el archivo de entrada y el archivo de salida
 with open(input_file, 'r') as infile, open(output_file, 'w', newline='') as outfile:

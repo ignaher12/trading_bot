@@ -8,73 +8,132 @@ import yfinance as yf
 # Import the backtrader platform
 import backtrader as bt
 
-#intento de estrategia de vela - martillo para comprar y estrella de la tarde para vender.
-class TestStrategy(bt.Strategy):
-    def log(self, txt, dt=None):
-        ''' Logging function fot this strategy'''
-        dt = dt or self.datas[0].datetime.date(0)
-        print('%s, %s' % (dt.isoformat(), txt))
-    def __init__(self):
-        # Keep a reference to the "close" line in the data[0] dataseries
-        self.dataclose = self.datas[0].close
-        self.dataopen= self.datas[0].open
-    def next(self):
-        # Simply log the closing price of the series from the reference
-        #self.log('Close, %.2f' % self.dataclose[0])
-        
-        if self.dataclose[0] < self.dataclose[-1]:
-            # current close less than previous close
-            if self.dataclose[-1] < self.dataclose[-2]:
-                # previous close less than the previous close
-                # BUY, BUY, BUY!!! (with all possible default parameters)
-                self.log('BUY CREATE, %.2f' % self.dataclose[0])
-                self.buy()
-                if self.dataopen[0] < self.dataclose[0]:
-                    # previous close less than the previous close
-                    # BUY, BUY, BUY!!! (with all possible default parameters)
-                    self.log('BUY CREATE, %.2f' % self.dataclose[0])
-                    self.buy()
-        else:
-            if self.dataclose[-1] > self.dataclose[-2]:
-                self.sell()
+class CombinedStrategy(bt.Strategy):
+    params = (
+        ('macd1', 12),
+        ('macd2', 26),
+        ('macdsig', 9),
+        ('rsi_periods', 14),
+        ('rsi_oversold', 35),
+        ('rsi_overbought', 65),
+        ('bbands_period', 20),
+        ('bbands_devfactor', 2),
+        ('portfolio_percent', 0.10),
+    )
 
+    def __init__(self):
+        self.indicators = {}
+        for i, data in enumerate(self.datas):  # Iterar por cada instrumento agregado al dataset.
+            self.indicators[data] = {
+                #Indicador MACD, indica senales de entrada y salida.
+                'macd': bt.indicators.MACD(data,
+                                           period_me1=self.params.macd1,
+                                           period_me2=self.params.macd2,
+                                           period_signal=self.params.macdsig),
+                #Indicador RSI, indica senales de entrada y de salida.
+                'rsi': bt.indicators.RSI(data, period=self.params.rsi_periods),
+                #Bandas de Bollinger.
+                'bbands': bt.indicators.BollingerBands(data,
+                                                       period=self.params.bbands_period,
+                                                       devfactor=self.params.bbands_devfactor),
+            }
+            self.indicators[data]['macd_diff'] = (
+                self.indicators[data]['macd'].macd - self.indicators[data]['macd'].signal
+            )
+            self.current_day = 0
+
+    def next(self):
+        self.current_day += 1
+        for i, data in enumerate(self.datas):
+            ind = self.indicators[data]
+            macd_diff = ind['macd_diff']
+
+            # Compra
+            if ((2740 - self.current_day) > 10):  # Verifica si no hay posición en este activo
+                macd_trending_up = macd_diff[0] > macd_diff[-1]
+                price_near_bottom = data.close[0] <= ind['bbands'].lines.bot[0] * 1.02
+                rsi_oversold = ind['rsi'][0] < self.params.rsi_oversold
+
+                if macd_trending_up and (price_near_bottom or rsi_oversold):
+                    size = self.calculate_position_size(data)
+                    self.buy(data=data, size=size*0.05)
+                    print(f'COMPRA: {data._name} - Precio: {data.close[0]}')
+
+            # Venta
+            if self.getposition(data):  # Verifica si hay posición en este activo
+                macd_trending_down = macd_diff[0] < macd_diff[-1]
+                price_near_top = data.close[0] >= ind['bbands'].lines.top[0] * 0.98
+                rsi_overbought = ind['rsi'][0] > self.params.rsi_overbought
+
+                if macd_trending_down and (price_near_top or rsi_overbought):
+                    self.sell(data=data)
+                    print(f'VENTA: {data._name} - Precio: {data.close[0]}')
+
+    def calculate_position_size(self, data):
+        portfolio_value = self.broker.getvalue()
+        position_value = portfolio_value * self.params.portfolio_percent
+        current_price = data.close[0]
+        size = position_value / current_price
+        return int(size)
 
 if __name__ == '__main__':
     # Create a cerebro entity
     cerebro = bt.Cerebro()
     #Agrego la estrategia
-    cerebro.addstrategy(TestStrategy)
+    initial_cash = 10000.0
     #Seteo comision del broker.
     cerebro.broker.setcommission(commission=0.001)
     # Descargar el csv 
-    #data = yf.download('AAPL', start='2000-01-01', end='2000-12-31', ignore_tz = True)
-    # Guardar los datos en un archivo CSV
-    #data.to_csv('samples/orcl_invalid.csv')
-    
+
         #Hay que ejecutar el cleaner para formatear el archivo cuando recien se descarga
         #esto deberiamos solucionarlo pero no se como.
         
-    datapath = 'samples/orcl_cleaned.csv'
+    symbols = ['AAPL', 'BRK', 'NVDA']
+    data_files = [
+        'samples/orcl_cleaned_AAPL.csv',
+        'samples/orcl_cleaned_BRK.csv',
+        'samples/orcl_cleaned_NVDA.csv'
+    ]
+    #file_path = 'samples/orcl_cleaned_NVDA.csv'
+    # Añadir los datos al cerebro
+    for i, file_path in enumerate(data_files):
+        data = bt.feeds.YahooFinanceCSVData(
+            dataname=data_files[i],
+            fromdate=datetime.datetime(2000, 1, 1),
+            todate=datetime.datetime(2002, 12, 31),
+            reverse=False
+        )
+        cerebro.adddata(data, name=symbols[i])
 
-    # Formatea la data del csv con los parametros del framework. 
-    data = bt.feeds.YahooFinanceCSVData(
-        dataname=datapath,
-        fromdate=datetime.datetime(2000, 1, 1),
-        todate=datetime.datetime(2000, 12, 31),
-        reverse=False
-    )
     # Agrega la data al cerebro.
-    cerebro.adddata(data)
+    cerebro.addstrategy(CombinedStrategy)
     # Setea plata en el broker.
-    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcash(initial_cash)
 
     print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
-    init = cerebro.broker.getvalue()
-    
+    init = cerebro.broker.getvalue()  
     # Run over everything
     cerebro.run()
-    cerebro.plot()
-    # Print out the final result
-    print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
-    end = cerebro.broker.getvalue()
-    print(f"El mega agente de bolsas recaudo un total de $ {end-init}")
+
+    open_positions_value = 0
+    for position in cerebro.broker.positions.values():
+        open_positions_value += position.size * position.price
+
+    # Calcula el valor total del portfolio
+    total_portfolio_value = cerebro.broker.getvalue() + open_positions_value
+    money_gained = total_portfolio_value - initial_cash  # Restamos el cash inicial
+
+    # Calcula el porcentaje de ganancia respecto al portfolio inicial
+    percentage_gain = (money_gained / initial_cash) * 100
+
+    # Imprime los resultados
+    print(f'Portfolio final (efectivo + posiciones abiertas): ${total_portfolio_value:.2f}')
+    print(f'Portfolio en efectivo: ${cerebro.broker.getvalue():.2f}')
+    print(f'Valor de posiciones abiertas: ${open_positions_value:.2f}')
+    print(f'Dinero total ganado: ${money_gained:.2f}')
+    print(f'Porcentaje del portfolio inicial ganado: %{percentage_gain:.2f}')
+    
+    try:
+        cerebro.plot()
+    except: 
+        print('Error al graficar')
